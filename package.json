@@ -1,0 +1,27 @@
+{
+  "name": "universal-3d-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Universal 3D Viewer - Offline-first 3D and CAD mobile application",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --prefix apps/mobile run dev",
+    "build": "npm --prefix apps/mobile run build",
+    "test": "npm --prefix apps/mobile test"
+  },
+  "keywords": [
+    "3d",
+    "cad",
+    "viewer",
+    "filament",
+    "react-native",
+    "gltf",
+    "step",
+    "stl",
+    "obj"
+  ],
+  "author": "Universal 3D Viewer Team",
+  "license": "Apache-2.0"
+}
