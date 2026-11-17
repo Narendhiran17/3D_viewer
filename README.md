@@ -6,6 +6,15 @@ Built strictly according to the architecture specification in [universal_3d_view
 
 ---
 
+## 📥 Download Android APK (v1.0.0)
+
+Direct download of the installable Android release:
+- 📱 **[Download Universal-3D-Viewer-v1.0.0.apk (Direct Download)](releases/Universal-3D-Viewer-v1.0.0.apk?raw=true)**
+- 📦 **File Size**: ~4.14 MB
+- ⚡ **Supported OS**: Android 8.0+ (Oreo, Pie, Android 10, 11, 12, 13, 14, 15+)
+
+---
+
 ## 🏗️ Architecture Overview
 
 ```mermaid

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Universal 3D Viewer</string>
+    <string name="title_activity_main">Universal 3D Viewer</string>
+    <string name="package_name">com.universal3dviewer.app</string>
+    <string name="custom_url_scheme">com.universal3dviewer.app</string>
+</resources>

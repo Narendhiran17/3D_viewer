@@ -1,0 +1,8 @@
+{
+  "appId": "com.universal3dviewer.app",
+  "appName": "Universal 3D Viewer",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
