@@ -66,7 +66,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
     } else if (sampleType === "ply") {
       onFileSelected("pyramid.ply", "ply\nformat ascii 1.0\nelement vertex 5\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nelement face 6\nproperty list uchar int vertex_indices\nend_header\n0 1.5 0 255 100 100\n-1 0 -1 100 255 100\n1 0 -1 100 100 255\n1 0 1 255 255 100\n-1 0 1 255 100 255\n3 0 1 2\n3 0 2 3\n3 0 3 4\n3 0 4 1\n3 1 4 3\n3 1 3 2", tessellation);
     } else {
-      onFileSelected("drone_prototype.glb", "glTF", tessellation);
+      onFileSelected("drone_prototype.glb", "SAMPLE_DRONE_GLB", tessellation);
     }
     onClose();
   };
