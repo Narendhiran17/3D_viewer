@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Upload, FileBox, X, Layers, AlertCircle, Sparkles, Cpu } from "lucide-react";
+import { Upload, FileBox, X, FolderOpen, Sparkles, Cpu, Loader2 } from "lucide-react";
 import { TessellationProfile } from "../types/engine";
 
 interface DocumentPickerModalProps {
@@ -14,6 +14,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
   onFileSelected
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isReading, setIsReading] = useState(false);
   const [tessellation, setTessellation] = useState<TessellationProfile>("balanced");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,28 +33,85 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0]);
+      await processFile(e.dataTransfer.files[0]);
     }
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
+      const selected = e.target.files[0];
+      e.target.value = ""; // Reset so the same file can be selected again
+      await processFile(selected);
+    }
+  };
+
+  const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(reader.result);
+        } else {
+          reject(new Error("Unable to read file into ArrayBuffer"));
+        }
+      };
+      reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+        } else {
+          reject(new Error("Unable to read file as text"));
+        }
+      };
+      reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+      reader.readAsText(file);
+    });
+  };
+
+  const triggerFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
     }
   };
 
   const processFile = async (file: File) => {
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    const isTextFormat = ext === "obj" || ext === "step" || ext === "stp" || ext === "iges" || ext === "igs";
+    setIsReading(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const isTextFormat = ext === "obj" || ext === "step" || ext === "stp" || ext === "iges" || ext === "igs";
 
-    if (isTextFormat) {
-      const text = await file.text();
-      onFileSelected(file.name, text, tessellation);
-    } else {
-      const buffer = await file.arrayBuffer();
-      onFileSelected(file.name, buffer, tessellation);
+      if (isTextFormat) {
+        const text = await readFileAsText(file);
+        onFileSelected(file.name, text, tessellation);
+      } else {
+        // Universal binary reader for GLB, STL, PLY, etc.
+        let buffer: ArrayBuffer;
+        if (typeof file.arrayBuffer === "function") {
+          try {
+            buffer = await file.arrayBuffer();
+          } catch {
+            buffer = await readFileAsArrayBuffer(file);
+          }
+        } else {
+          buffer = await readFileAsArrayBuffer(file);
+        }
+        onFileSelected(file.name, buffer, tessellation);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error("Error loading selected file:", err);
+      alert("Failed to read file from storage: " + (err.message || "Unknown error"));
+    } finally {
+      setIsReading(false);
     }
-    onClose();
   };
 
   const loadSample = async (sampleType: "step" | "stl" | "obj" | "ply" | "glb") => {
@@ -73,7 +131,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl p-6 rounded-2xl glass-panel shadow-2xl border border-slate-700/60 text-slate-100">
+      <div className="relative w-full max-w-xl p-6 rounded-2xl glass-panel shadow-2xl border border-slate-700/60 text-slate-100 max-h-[92vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
@@ -87,50 +145,86 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
           </div>
           <div>
             <h2 className="text-xl font-bold tracking-tight">Open 3D Model</h2>
-            <p className="text-xs text-slate-400">Select local files from device storage or choose a sample</p>
+            <p className="text-xs text-slate-400">Select any 3D or CAD model from your phone or device</p>
           </div>
         </div>
 
-        {/* Drop Zone */}
+        {/* Native File Input: accept all files so mobile OS does not gray out GLB */}
+        <input
+          id="native-3d-file-input"
+          ref={fileInputRef}
+          type="file"
+          accept="*/*"
+          onChange={handleFileInputChange}
+          style={{ position: "fixed", top: "-2000px", left: "-2000px", opacity: 0.001, pointerEvents: "none" }}
+        />
+
+        {/* Primary Mobile Action Button: Direct Native File Picker */}
+        <button
+          type="button"
+          onClick={triggerFileInput}
+          disabled={isReading}
+          className="w-full mb-3 py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-2.5 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-60"
+        >
+          {isReading ? (
+            <>
+              <Loader2 size={18} className="animate-spin text-slate-950" />
+              <span>Reading File from Storage...</span>
+            </>
+          ) : (
+            <>
+              <FolderOpen size={18} />
+              <span>Browse Files on Device (Select GLB / CAD)</span>
+            </>
+          )}
+        </button>
+
+        {/* Direct Native File Chooser (Fallback for Android WebViews) */}
+        <div className="mb-4 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-400 shrink-0">Direct Chooser:</span>
+          <input
+            type="file"
+            accept="*/*"
+            onChange={handleFileInputChange}
+            className="text-xs text-slate-300 w-full file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
+          />
+        </div>
+
+        {/* Drop Zone for Desktop & Mobile Touch */}
         <div
+          onClick={triggerFileInput}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
+          className={`relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 block text-center ${
             isDragging
               ? "border-cyan-400 bg-cyan-500/10 scale-[1.01]"
               : "border-slate-700/80 hover:border-slate-600 bg-slate-900/40 hover:bg-slate-900/60"
           }`}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".glb,.gltf,.obj,.stl,.ply,.step,.stp,.iges,.igs,.3mf,.usdz"
-            onChange={handleFileInputChange}
-            className="hidden"
-          />
-          <div className="p-4 rounded-full bg-slate-800 text-cyan-400 mb-3 border border-slate-700">
-            <Upload size={28} />
+          <div className="p-3.5 rounded-full bg-slate-800 text-cyan-400 mb-2 border border-slate-700 inline-flex">
+            <Upload size={24} />
           </div>
-          <span className="text-sm font-semibold text-slate-200">Drop your 3D or CAD model here</span>
-          <span className="text-xs text-slate-400 mt-1">or click to browse local files</span>
-          <div className="flex flex-wrap justify-center gap-1.5 mt-4 text-[10px] text-slate-400 font-mono">
-            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.GLB / .glTF</span>
-            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.STEP / .STP</span>
+          <span className="text-sm font-semibold text-slate-200 block">Tap here or drop your 3D model</span>
+          <span className="text-xs text-slate-400 mt-0.5 block">Opens your phone's file manager</span>
+          
+          <div className="flex flex-wrap justify-center gap-1.5 mt-3 text-[10px] text-slate-400 font-mono">
+            <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">.GLB</span>
+            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.glTF</span>
+            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.STEP</span>
+            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.STP</span>
             <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.OBJ</span>
             <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.STL</span>
             <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.PLY</span>
-            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700">.IGES</span>
           </div>
         </div>
 
         {/* CAD Tessellation Setting */}
-        <div className="mt-5 p-3.5 rounded-xl bg-slate-900/50 border border-slate-800">
+        <div className="mt-4 p-3.5 rounded-xl bg-slate-900/50 border border-slate-800">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <Cpu size={14} className="text-amber-400" />
-              CAD Tessellation Quality Profile
+              CAD Tessellation Profile (for STEP / IGES)
             </span>
             <span className="text-[11px] text-slate-400 capitalize">{tessellation}</span>
           </div>
@@ -142,7 +236,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
                 onClick={() => setTessellation(prof)}
                 className={`py-1.5 px-3 rounded-lg text-xs font-medium border transition-colors ${
                   tessellation === prof
-                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
+                    ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 font-bold"
                     : "bg-slate-800/60 text-slate-400 border-slate-700/60 hover:bg-slate-800 hover:text-slate-200"
                 }`}
               >
@@ -152,16 +246,29 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
           </div>
         </div>
 
-        {/* One-Click Sample Models */}
-        <div className="mt-5">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2.5">
+        {/* Quick Test Samples */}
+        <div className="mt-4">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2">
             <Sparkles size={14} className="text-cyan-400" />
             Quick Test Sample Corpus:
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             <button
+              onClick={() => loadSample("glb")}
+              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-cyan-500/40 text-left transition-all"
+            >
+              <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 font-mono text-[10px] font-bold">
+                GLB
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-cyan-300">Drone Prototype</div>
+                <div className="text-[10px] text-slate-400">glTF 2.0 PBR</div>
+              </div>
+            </button>
+
+            <button
               onClick={() => loadSample("step")}
-              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/40 text-left transition-all"
+              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 text-left transition-all"
             >
               <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 font-mono text-[10px] font-bold">
                 CAD
@@ -174,7 +281,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
 
             <button
               onClick={() => loadSample("stl")}
-              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/40 text-left transition-all"
+              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-blue-500/40 text-left transition-all"
             >
               <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 font-mono text-[10px] font-bold">
                 STL
@@ -187,7 +294,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
 
             <button
               onClick={() => loadSample("obj")}
-              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/40 text-left transition-all"
+              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/40 text-left transition-all"
             >
               <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 font-mono text-[10px] font-bold">
                 OBJ
@@ -200,7 +307,7 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
 
             <button
               onClick={() => loadSample("ply")}
-              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/40 text-left transition-all"
+              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/40 text-left transition-all"
             >
               <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 font-mono text-[10px] font-bold">
                 PLY
@@ -208,19 +315,6 @@ export const DocumentPickerModal: React.FC<DocumentPickerModalProps> = ({
               <div>
                 <div className="text-xs font-semibold text-slate-200">Color Pyramid</div>
                 <div className="text-[10px] text-slate-400">Stanford PLY</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => loadSample("glb")}
-              className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/40 text-left transition-all col-span-2 sm:col-span-1"
-            >
-              <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 font-mono text-[10px] font-bold">
-                GLB
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-200">Drone Prototype</div>
-                <div className="text-[10px] text-slate-400">Binary glTF PBR</div>
               </div>
             </button>
           </div>
